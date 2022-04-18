@@ -46,7 +46,7 @@ def bits_to_megabits(bits_per_sec):
     return str(megabits) + "Mbps"
 
 def megabits_to_bits(megabits):
-    bits_per_sec = megabits * (10**6)
+    bits_per_sec = int(megabits) * (10**6)
     return str(bits_per_sec)
 
 def is_json(myjson):
@@ -71,11 +71,11 @@ def runTest():
             if len(output) > 0:
                 logging.error('CFSpeedtest CLI Error occurred that' +
                               'was not in JSON format')
-            return (0, 0, 0, 0, 0)
+            return (0, 0, 0, 0, 0, 0, 0, 0, 0)
     except subprocess.TimeoutExpired:
         logging.error('CFSpeedtest CLI process took too long to complete ' +
                       'and was killed.')
-        return (0, 0, 0, 0, 0)
+        return (0, 0, 0, 0, 0, 0, 0, 0, 0)
 
     if is_json(output):
         data = json.loads(output)
@@ -83,16 +83,18 @@ def runTest():
             # Socket error
             print('Something went wrong')
             print(data['error'])
-            return (0, 0, 0, 0, 0)  # Return all data as 0
+            return (0, 0, 0, 0, 0, 0, 0, 0, 0)  # Return all data as 0
         if "version" in data:
             actual_server_city = data['test_location_city']['value']
             actual_server_region = data['test_location_region']['value']
             actual_ping = data['latency_ms']['value']
             actual_jitter = data['Jitter_ms']['value']
-            download = megabits_to_bits(data['90th_percentile_download_speed']['value'])
-            upload = megabits_to_bits(data['90th_percentile_upload_speed']['value'])
+            download_mbps = data['90th_percentile_download_speed']['value']
+            download = megabits_to_bits(download_mbps)
+            upload_mbps = data['90th_percentile_upload_speed']['value']
+            upload = megabits_to_bits(upload_mbps)
             return (actual_server_city, actual_server_region, actual_ping, actual_jitter, 
-                    download, upload, 1)
+                    download_mbps, download, upload_mbps, upload, 1)
 
 
 @app.route("/metrics")
@@ -100,7 +102,7 @@ def updateResults():
     global cache_until
 
     if datetime.datetime.now() > cache_until:
-        r_server_city, r_server_region, r_ping, r_jitter, r_download, r_upload, r_status = runTest()
+        r_server_city, r_server_region, r_ping, r_jitter, r_download_mbps, r_download, r_upload_mbps, r_upload, r_status = runTest()
         server.info({'server_location_city': r_server_city, 'server_location_region': r_server_region})
         jitter.set(r_jitter)
         ping.set(r_ping)
@@ -110,8 +112,8 @@ def updateResults():
         logging.info("Server City=" + r_server_city + " Server Region=" + r_server_region +
                      " Jitter=" + str(r_jitter) + "ms" + 
                      " Ping=" + str(r_ping) + "ms" + 
-                     " Download=" + str(r_download) + 
-                     " Upload=" + str(r_upload))
+                     " Download=" + str(r_download_mbps) + "Mbps" +
+                     " Upload=" + str(r_upload_mbps) + "Mbps")
 
         cache_until = datetime.datetime.now() + datetime.timedelta(
             seconds=cache_seconds)
@@ -137,7 +139,7 @@ def checkForBinary():
 
 if __name__ == '__main__':
     checkForBinary()
-    PORT = os.getenv('SPEEDTEST_PORT', 9799)
+    PORT = os.getenv('SPEEDTEST_PORT', 9798)
     logging.info("Starting Cloudflare-Speedtest-Exporter on http://localhost:" +
                  str(PORT))
     serve(app, host='0.0.0.0', port=PORT)
