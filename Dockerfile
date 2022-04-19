@@ -1,23 +1,17 @@
-FROM python:3.10-slim
+FROM python:3.10.4-alpine3.15
 
 # Create user
-RUN useradd speedtest
+RUN adduser -D speedtest
 
 WORKDIR /app
 COPY src/requirements.txt .
 
 # Install required modules
-RUN apt-get update && \
-    apt-get install -y \
-        build-essential \
-        make \
-        gcc \
-        dpkg-dev \
-        libjpeg-dev \
-    && pip install --no-cache-dir -r requirements.txt \
-    && apt-get remove -y --purge make gcc build-essential dpkg-dev libjpeg-dev \
-    && apt-get autoremove -y \
-    && rm -rf /var/lib/apt/lists/* \
+RUN apk update && \
+    apk add make build-base \
+    && pip install --no-cache -r requirements.txt \
+    && apk del make build-base \
+    && rm -rf /var/cache/apk/* \
     && find /usr/local/lib/python3.10 -name "*.pyc" -type f -delete
 
 COPY src/. .
