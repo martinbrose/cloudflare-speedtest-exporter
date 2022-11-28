@@ -103,7 +103,7 @@ def updateResults():
 
     if datetime.datetime.now() > cache_until:
         r_server_city, r_server_region, r_ping, r_jitter, r_download_mbps, r_download, r_upload_mbps, r_upload, r_status = runTest()
-        server.info({'server_location_city': r_server_city, 'server_location_region': r_server_region})
+        server.info({'server_location_city': str(r_server_city), 'server_location_region': str(r_server_region)})
         jitter.set(r_jitter)
         ping.set(r_ping)
         download_speed.set(r_download)
