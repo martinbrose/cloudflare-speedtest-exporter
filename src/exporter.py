@@ -109,7 +109,7 @@ def updateResults():
         download_speed.set(r_download)
         upload_speed.set(r_upload)
         up.set(r_status)
-        logging.info("Server City=" + r_server_city + " Server Region=" + r_server_region +
+        logging.info("Server City=" + str(r_server_city) + " Server Region=" + str(r_server_region) +
                      " Jitter=" + str(r_jitter) + "ms" + 
                      " Ping=" + str(r_ping) + "ms" + 
                      " Download=" + str(r_download_mbps) + "Mbps" +
