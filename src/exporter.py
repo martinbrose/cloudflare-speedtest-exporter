@@ -129,9 +129,10 @@ def mainPage():
 
 def checkForBinary():
     if which("cfspeedtest") is None:
-        logging.error("Speedtest CLI binary not found. Please install it by" +
-                      " going to the official website.\n" +
-                      "https://www.speedtest.net/apps/cli")
+        logging.error("Cloudflare-Speedtest CLI binary not found.\n" +
+                        "Please install it by running\n" +
+                        "'pip install cloudflarepycli'\n" +
+                        "https://pypi.org/project/cloudflarepycli/")
         exit(1)
     speedtestVersionDialog = (subprocess.run(['cfspeedtest', '--version'],
                               capture_output=True, text=True))
