@@ -6,7 +6,7 @@ Installed with `pip install cloudflarepycli`. Reports the 90 percentile speed in
 
 Published on [Docker Hub here](https://hub.docker.com/r/redorbluepill/cloudflare-speedtest-exporter).
 
-Based on [Miguel de Carvalho's speedtest exporter](https://github.com/MiguelNdeCarvalho/speedtest-exporter)
+Based on [Miguel de Carvalho's speedtest exporter](https://github.com/MiguelNdeCarvalho/speedtest-exporter).
 
 ## Thanks to
 
