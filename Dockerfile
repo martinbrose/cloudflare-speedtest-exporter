@@ -1,4 +1,4 @@
-FROM python:3.10.9-alpine3.17
+FROM python:3.11.1-alpine3.17
 
 # Create user
 RUN adduser -D speedtest
@@ -12,7 +12,7 @@ RUN apk update && \
     && pip install --no-cache -r requirements.txt \
     && apk del make build-base \
     && rm -rf /var/cache/apk/* \
-    && find /usr/local/lib/python3.10 -name "*.pyc" -type f -delete
+    && find /usr/local/lib/python3.11 -name "*.pyc" -type f -delete
 
 COPY src/. .
 
