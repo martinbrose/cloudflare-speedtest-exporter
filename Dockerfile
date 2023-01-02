@@ -8,7 +8,7 @@ COPY src/requirements.txt .
 
 # Install required modules
 RUN apk update && \
-    apk add make build-base \
+    apk add --no-cache make=4.3-r1 build-base=0.5-r3 \
     && pip install --no-cache -r requirements.txt \
     && apk del make build-base \
     && rm -rf /var/cache/apk/* \

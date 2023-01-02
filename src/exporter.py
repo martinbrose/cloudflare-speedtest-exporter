@@ -45,9 +45,11 @@ def bits_to_megabits(bits_per_sec):
     megabits = round(bits_per_sec * (10**-6), 2)
     return str(megabits) + "Mbps"
 
+
 def megabits_to_bits(megabits):
     bits_per_sec = int(megabits) * (10**6)
     return str(bits_per_sec)
+
 
 def is_json(myjson):
     try:
@@ -93,7 +95,7 @@ def runTest():
             download = megabits_to_bits(download_mbps)
             upload_mbps = data['90th_percentile_upload_speed']['value']
             upload = megabits_to_bits(upload_mbps)
-            return (actual_server_city, actual_server_region, actual_ping, actual_jitter, 
+            return (actual_server_city, actual_server_region, actual_ping, actual_jitter,
                     download_mbps, download, upload_mbps, upload, 1)
 
 
@@ -110,8 +112,8 @@ def updateResults():
         upload_speed.set(r_upload)
         up.set(r_status)
         logging.info("Server City=" + str(r_server_city) + " Server Region=" + str(r_server_region) +
-                     " Jitter=" + str(r_jitter) + "ms" + 
-                     " Ping=" + str(r_ping) + "ms" + 
+                     " Jitter=" + str(r_jitter) + "ms" +
+                     " Ping=" + str(r_ping) + "ms" +
                      " Download=" + str(r_download_mbps) + "Mbps" +
                      " Upload=" + str(r_upload_mbps) + "Mbps")
 
