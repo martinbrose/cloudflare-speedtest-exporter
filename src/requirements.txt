@@ -2,5 +2,5 @@ Werkzeug==2.2.2
 Flask==2.2.2
 prometheus_client==0.15.0
 waitress==2.1.2
-beautifulsoup4==4.11.1
+beautifulsoup4==4.12.2
 cloudflarepycli==1.7.0
