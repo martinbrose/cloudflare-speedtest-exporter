@@ -67,6 +67,7 @@ def runTest():
     ]
     try:
         output = subprocess.check_output(cmd, timeout=timeout)
+        output = output.decode().rsplit('}',1)[0] + "}"
     except subprocess.CalledProcessError as e:
         output = e.output
         if not is_json(output):
