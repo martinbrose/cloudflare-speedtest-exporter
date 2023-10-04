@@ -1,4 +1,4 @@
-FROM python:3.11.5-alpine3.17
+FROM python:3.12.0-alpine3.17
 
 # Create user
 RUN adduser -D speedtest
@@ -8,7 +8,7 @@ WORKDIR /app
 COPY src/. .
 
 RUN pip install --no-cache -r requirements.txt \
-    && find /usr/local/lib/python3.11 -name "*.pyc" -type f -delete
+    && find /usr/local/lib/python3.12 -name "*.pyc" -type f -delete
 
 USER speedtest
 
