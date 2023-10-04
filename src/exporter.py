@@ -67,7 +67,7 @@ def runTest():
     ]
     try:
         output = subprocess.check_output(cmd, timeout=timeout)
-        output = output.decode().rsplit('}',1)[0] + "}"
+        output = output.decode().rsplit('}', 1)[0] + "}"
     except subprocess.CalledProcessError as e:
         output = e.output
         if not is_json(output):
@@ -105,7 +105,8 @@ def updateResults():
     global cache_until
 
     if datetime.datetime.now() > cache_until:
-        r_server_city, r_server_region, r_ping, r_jitter, r_download_mbps, r_download, r_upload_mbps, r_upload, r_status = runTest()
+        r_server_city, r_server_region, r_ping, r_jitter, \
+            r_download_mbps, r_download, r_upload_mbps, r_upload, r_status = runTest()
         server.info({'server_location_city': str(r_server_city), 'server_location_region': str(r_server_region)})
         jitter.set(r_jitter)
         ping.set(r_ping)
@@ -133,12 +134,10 @@ def mainPage():
 def checkForBinary():
     if which("cfspeedtest") is None:
         logging.error("Cloudflare-Speedtest CLI binary not found.\n" +
-                        "Please install it by running\n" +
-                        "'pip install cloudflarepycli'\n" +
-                        "https://pypi.org/project/cloudflarepycli/")
+                      "Please install it by running\n" +
+                      "'pip install cloudflarepycli'\n" +
+                      "https://pypi.org/project/cloudflarepycli/")
         exit(1)
-    speedtestVersionDialog = (subprocess.run(['cfspeedtest', '--version'],
-                              capture_output=True, text=True))
 
 
 if __name__ == '__main__':
