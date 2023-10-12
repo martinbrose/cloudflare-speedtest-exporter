@@ -2,7 +2,7 @@ name: Remove old Docker images
 
 on:
   push:
-    branches: [ main ]
+    branches: [ master ]
 
 jobs:
   remove-old-docker-images:
