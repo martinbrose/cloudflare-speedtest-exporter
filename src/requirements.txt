@@ -1,5 +1,5 @@
 Werkzeug==3.0.1
 Flask==3.0.0
 prometheus_client==0.19.0
-waitress==2.1.2
+waitress==3.0.0
 cloudflarepycli==1.8.1
