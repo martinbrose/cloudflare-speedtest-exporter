@@ -29,8 +29,8 @@ jobs:
         uses: docker/metadata-action@9dc751fe249ad99385a2583ee0d084c400eee04e
         with:
           images: |
-            redorbluepill/${{ env.IMAGE_NAME }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+            redorbluepill/cloudflare-speedtest-exporter
+            ghcr.io/${{ env.IMAGE_NAME }}
           tags: |
             type=schedule
             type=semver,pattern={{version}}
