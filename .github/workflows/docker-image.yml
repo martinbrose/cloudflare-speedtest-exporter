@@ -13,7 +13,7 @@ env:
 
 jobs:
   build:
-    name: Buuild Image
+    name: Build Image
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -60,6 +60,5 @@ jobs:
           platforms: linux/amd64,linux/arm64,linux/arm/v7,linux/arm/v6
           push: true
           tags: | 
-            redorbluepill/cloudflare-speedtest-exporter:latest
             ghcr.io/redorbluepill/cloudflare-speedtest-exporter:latest
           labels: ${{ steps.meta.outputs.labels }}
