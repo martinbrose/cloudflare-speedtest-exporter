@@ -3,14 +3,11 @@ name: Docker Image CI
 
 on:
   push:
-    branches: [master]
     tags:
-      - "v*.*.*"
-  pull_request:
-    branches: [master]
+      - "*"
     
 env:
-  IMAGE_NAME: ${{ github.repository }}
+  IMAGE_NAME: ${{ github.event.repository.name }}
 
 jobs:
   build:
@@ -23,24 +20,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      
-      - name: Extract metadata (tags, labels) for Docker
-        id: meta
-        uses: docker/metadata-action@8e5442c4ef9f78752691e2d8f8d19755c6f78e81
-        with:
-          images: |
-            redorbluepill/cloudflare-speedtest-exporter
-            ghcr.io/${{ env.IMAGE_NAME }}
-          tags: |
-            type=schedule
-            type=semver,pattern={{version}}
-            type=semver,pattern=v{{major}}.{{minor}}.{{patch}}
-            type=semver,pattern={{major}}.{{minor}}.{{patch}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-            type=ref,event=branch
-            type=ref,event=pr
-            type=sha
       
       - name: Login to Docker Hub
         if: github.event_name != 'pull_request'
@@ -64,6 +43,10 @@ jobs:
       
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+
+      - name: Get Current Tag
+        id: tag
+        uses: "WyriHaximus/github-action-get-previous-tag@master"
       
       - name: Build and push
         uses: docker/build-push-action@v5
@@ -72,5 +55,12 @@ jobs:
           file: ./Dockerfile
           platforms: linux/amd64,linux/arm64,linux/arm/v7,linux/arm/v6
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: |
+            redorbluepill/${{ env.IMAGE_NAME }}:latest
+            redorbluepill/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.tags }}
+            ghcr.io/martinbrose/${{ env.IMAGE_NAME }}:latest
+            ghcr.io/martinbrose/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.tags }}
+          outputs: |
+            type=image
+            name=target
+            annotation-index.org.opencontainers.image.description=Multi-arch Docker image for ${{ env.IMAGE_NAME }}
