@@ -60,7 +60,4 @@ jobs:
             redorbluepill/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.tags }}
             ghcr.io/martinbrose/${{ env.IMAGE_NAME }}:latest
             ghcr.io/martinbrose/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.tags }}
-          outputs: |
-            type=image
-            name=target
-            annotation-index.org.opencontainers.image.description=Multi-arch Docker image for ${{ env.IMAGE_NAME }}
+          outputs: type=image,name=target,annotation-index.org.opencontainers.image.description=Multi-arch Docker image for ${{ env.IMAGE_NAME }}
