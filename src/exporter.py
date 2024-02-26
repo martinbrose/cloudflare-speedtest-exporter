@@ -47,7 +47,7 @@ def bits_to_megabits(bits_per_sec):
 
 
 def megabits_to_bits(megabits):
-    bits_per_sec = int(megabits) * (10**6)
+    bits_per_sec = float(megabits) * (10**6)
     return str(bits_per_sec)
 
 
