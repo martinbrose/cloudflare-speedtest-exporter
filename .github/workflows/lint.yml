@@ -13,6 +13,8 @@ jobs:
   lint-code:
     name: Lint code
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout cout
         uses: actions/checkout@v4
