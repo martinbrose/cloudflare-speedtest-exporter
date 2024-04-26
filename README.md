@@ -6,6 +6,16 @@ The exporter reports the 90th percentile speed data, which aligns with the Cloud
 It is based on [Miguel de Carvalho's Ookla speedtest exporter](https://github.com/MiguelNdeCarvalho/speedtest-exporter).
 
 Published on [Docker Hub here](https://hub.docker.com/r/redorbluepill/cloudflare-speedtest-exporter).
+
+## Table of Contents
+- [Overview](#overview)
+- [Usage](#usage)
+- [Docker Hub](#docker-hub)
+- [Get Started](#get-started)
+- [Contributing](#contributing)
+- [Acknowledgments and Thank You](#acknowledgments-and-thank-you)
+- [License](#license)
+
 ## Overview
 
 This exporter offers a seamless way to monitor network performance by reporting key metrics such as ping latency, jitter, download speed, and upload speed.
@@ -35,6 +45,10 @@ You can find the published Docker image on Docker Hub [here](https://hub.docker.
 2. Customize the exporter to fit your requirements.
 3. Build the Docker image using the provided Dockerfile.
 4. Deploy the Docker container and start gathering network speed metrics.
+
+## Contributing
+
+We welcome contributions! Please see [here](CONTRIBUTING.md) for details on how to contribute.
 
 ## Acknowledgments and Thank You
 

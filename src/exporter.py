@@ -1,3 +1,4 @@
+# Import necessary libraries
 import subprocess
 import json
 import os
@@ -8,9 +9,10 @@ from flask import Flask
 from waitress import serve
 from shutil import which
 
-app = Flask("Cloudflare-Speedtest-Exporter")  # Create flask app
+# Create a Flask application
+app = Flask("Cloudflare-Speedtest-Exporter")
 
-# Setup logging values
+# Setup logging with a specific format and level
 format_string = 'level=%(levelname)s datetime=%(asctime)s %(message)s'
 logging.basicConfig(encoding='utf-8',
                     level=logging.DEBUG,
@@ -20,7 +22,7 @@ logging.basicConfig(encoding='utf-8',
 log = logging.getLogger('waitress')
 log.disabled = True
 
-# Create Metrics
+# Create Prometheus metrics
 server = Info('speedtest_server', 'Speedtest server used to test')
 ping = Gauge('speedtest_ping_latency_milliseconds',
              'Speedtest current Ping in ms')
@@ -32,24 +34,21 @@ upload_speed = Gauge('speedtest_upload_bits_per_second',
                      'Speedtest current Upload speed in bits/s')
 up = Gauge('speedtest_up', 'Speedtest status whether the scrape worked')
 
-# Cache metrics for how long (seconds)?
+# Set cache duration for metrics (in seconds)
 cache_seconds = int(os.environ.get('SPEEDTEST_CACHE_FOR', 0))
 cache_until = datetime.datetime.fromtimestamp(0)
 
-
+# Define utility functions for unit conversions and JSON validation
 def bytes_to_bits(bytes_per_sec):
     return bytes_per_sec * 8
-
 
 def bits_to_megabits(bits_per_sec):
     megabits = round(bits_per_sec * (10**-6), 2)
     return str(megabits) + "Mbps"
 
-
 def megabits_to_bits(megabits):
     bits_per_sec = float(megabits) * (10**6)
     return str(bits_per_sec)
-
 
 def is_json(myjson):
     try:
@@ -58,13 +57,14 @@ def is_json(myjson):
         return False
     return True
 
-
+# Define function to run the speed test and parse the results
 def runTest():
     timeout = int(os.environ.get('SPEEDTEST_TIMEOUT', 90))
 
     cmd = [
         "cfspeedtest", "--json"
     ]
+    # Execute the command and handle potential errors
     try:
         output = subprocess.check_output(cmd, timeout=timeout)
         output = output.decode().rsplit('}', 1)[0] + "}"
@@ -80,6 +80,7 @@ def runTest():
                       'and was killed.')
         return (0, 0, 0, 0, 0, 0, 0, 0, 0)
 
+    # Parse the output if it is in JSON format
     if is_json(output):
         data = json.loads(output)
         if "error" in data:
@@ -99,11 +100,12 @@ def runTest():
             return (actual_server_city, actual_server_region, actual_ping, actual_jitter,
                     download_mbps, download, upload_mbps, upload, 1)
 
-
+# Define route to update and return Prometheus metrics
 @app.route("/metrics")
 def updateResults():
     global cache_until
 
+    # Run the speed test and update the metrics if the cache has expired
     if datetime.datetime.now() > cache_until:
         r_server_city, r_server_region, r_ping, r_jitter, \
             r_download_mbps, r_download, r_upload_mbps, r_upload, r_status = runTest()
@@ -124,13 +126,13 @@ def updateResults():
 
     return make_wsgi_app()
 
-
+# Define route for the main page
 @app.route("/")
 def mainPage():
     return ("<h1>Welcome to Cloudflare-Speedtest-Exporter.</h1>" +
             "Click <a href='/metrics'>here</a> to see metrics.")
 
-
+# Define function to check for the presence of the cfspeedtest binary
 def checkForBinary():
     if which("cfspeedtest") is None:
         logging.error("Cloudflare-Speedtest CLI binary not found.\n" +
@@ -139,7 +141,7 @@ def checkForBinary():
                       "https://pypi.org/project/cloudflarepycli/")
         exit(1)
 
-
+# Start the application if this script is run directly
 if __name__ == '__main__':
     checkForBinary()
     PORT = os.getenv('SPEEDTEST_PORT', 9798)
