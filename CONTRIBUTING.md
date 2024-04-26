@@ -37,7 +37,7 @@ Please follow these guidelines when contributing to the project:
 
 - Ensure your code follows the project's coding style and conventions.
 - Write clear and concise commit messages.
-- Include tests for any new functionality or bug fixes.
+- Include tests for any new functionality or bugfixes.
 - Document any changes or additions in the project's documentation.
 
 ## Where do I go from here?

@@ -38,17 +38,21 @@ up = Gauge('speedtest_up', 'Speedtest status whether the scrape worked')
 cache_seconds = int(os.environ.get('SPEEDTEST_CACHE_FOR', 0))
 cache_until = datetime.datetime.fromtimestamp(0)
 
+
 # Define utility functions for unit conversions and JSON validation
 def bytes_to_bits(bytes_per_sec):
     return bytes_per_sec * 8
+
 
 def bits_to_megabits(bits_per_sec):
     megabits = round(bits_per_sec * (10**-6), 2)
     return str(megabits) + "Mbps"
 
+
 def megabits_to_bits(megabits):
     bits_per_sec = float(megabits) * (10**6)
     return str(bits_per_sec)
+
 
 def is_json(myjson):
     try:
@@ -56,6 +60,7 @@ def is_json(myjson):
     except ValueError:
         return False
     return True
+
 
 # Define function to run the speed test and parse the results
 def runTest():
@@ -100,6 +105,7 @@ def runTest():
             return (actual_server_city, actual_server_region, actual_ping, actual_jitter,
                     download_mbps, download, upload_mbps, upload, 1)
 
+
 # Define route to update and return Prometheus metrics
 @app.route("/metrics")
 def updateResults():
@@ -126,11 +132,13 @@ def updateResults():
 
     return make_wsgi_app()
 
+
 # Define route for the main page
 @app.route("/")
 def mainPage():
     return ("<h1>Welcome to Cloudflare-Speedtest-Exporter.</h1>" +
             "Click <a href='/metrics'>here</a> to see metrics.")
+
 
 # Define function to check for the presence of the cfspeedtest binary
 def checkForBinary():
@@ -140,6 +148,7 @@ def checkForBinary():
                       "'pip install cloudflarepycli'\n" +
                       "https://pypi.org/project/cloudflarepycli/")
         exit(1)
+
 
 # Start the application if this script is run directly
 if __name__ == '__main__':
