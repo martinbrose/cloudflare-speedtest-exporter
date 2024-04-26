@@ -9,6 +9,8 @@ on:
 env:
   IMAGE_NAME: ${{ github.event.repository.name }}
 
+permissions: read-all
+
 jobs:
   build:
     name: Build Image
