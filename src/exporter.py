@@ -15,19 +15,6 @@ from waitress import serve
 
 from utils import megabits_to_bits, is_json
 
-# Create a Flask application
-app = Flask("Cloudflare-Speedtest-Exporter")
-
-# Setup logging with a specific format and level
-format_string = 'level=%(levelname)s datetime=%(asctime)s %(message)s'
-logging.basicConfig(encoding='utf-8',
-                    level=logging.DEBUG,
-                    format=format_string)
-
-# Disable Waitress Logs
-log = logging.getLogger('waitress')
-log.disabled = True
-
 
 @dataclass
 class TestResult:
@@ -213,17 +200,48 @@ class Metrics:
         self.up.set(result.status)
 
 
+def check_for_binary():
+    """
+    Checks if the Cloudflare-Speedtest CLI binary is installed.
+    
+    If the binary is not found, an error message is logged and the program exits.
+    To install the binary, run 'pip install cloudflarepycli'.
+    More information can be found at https://pypi.org/project/cloudflarepycli/.
+    """
+    if which("cfspeedtest") is None:
+        logging.error("Cloudflare-Speedtest CLI binary not found.\n" +
+                      "Please install it by running\n" +
+                      "'pip install cloudflarepycli'\n" +
+                      "https://pypi.org/project/cloudflarepycli/")
+        exit(1)
+
+
+def setup_app(app):
+    """
+    Set up the application with the specified configuration.
+
+    Args:
+        app: The application object.
+
+    Returns:
+        None
+    """
+    format_string = 'level=%(levelname)s datetime=%(asctime)s %(message)s'
+    logging.basicConfig(encoding='utf-8',
+                        level=logging.DEBUG,
+                        format=format_string)
+
+    # Disable Waitress Logs
+    log = logging.getLogger('waitress')
+    log.disabled = True
+
+
+# Create Flask app
+app = Flask("Cloudflare-Speedtest-Exporter")
+
 # Create instances
 speedtest = SpeedTest()
 metrics = Metrics()
-
-
-@app.route("/metrics")
-def update_results():
-    result = speedtest.run_speedtest()
-    if result is not None:
-        metrics.update_metrics(result)
-    return make_wsgi_app()
 
 
 # Define route for the main page
@@ -233,18 +251,18 @@ def main_page():
             "Click <a href='/metrics'>here</a> to see metrics.")
 
 
-# Define function to check for the presence of the cfspeedtest binary
-def check_for_binary():
-    if which("cfspeedtest") is None:
-        logging.error("Cloudflare-Speedtest CLI binary not found.\n" +
-                      "Please install it by running\n" +
-                      "'pip install cloudflarepycli'\n" +
-                      "https://pypi.org/project/cloudflarepycli/")
-        exit(1)
+# Define route for the metrics page
+@app.route("/metrics")
+def update_results():
+    result = speedtest.run_speedtest()
+    if result is not None:
+        metrics.update_metrics(result)
+    return make_wsgi_app()
 
 
 # Start the application if this script is run directly
 if __name__ == '__main__':
+    setup_app(app)
     check_for_binary()
     PORT = os.getenv('SPEEDTEST_PORT', 9798)
     logging.info("Starting Cloudflare-Speedtest-Exporter on http://localhost:" +
