@@ -4,7 +4,7 @@ import datetime
 import json
 import logging
 import os
-import subprocess
+from subprocess import check_output, TimeoutExpired, CalledProcessError
 import sys
 from collections.abc import Callable
 from shutil import which
@@ -101,64 +101,82 @@ def megabits_to_bits(megabits: float) -> int:
     return int(megabits * (10**6))
 
 
-def run_test() -> TestResult:
-    """Run the speedtest and parse the results."""
-    timeout = int(os.environ.get("SPEEDTEST_TIMEOUT", "90"))
+class Speedtest:
+    def __init__(self, cache_secs: int, timeout: int, cf_bin: str | None = None):
+        self.metrics = Metrics(cache_secs)
+        self.timeout = timeout
+        self.cmd = [cf_bin or self._get_bin(), "--json"]
 
-    try:
-        output = (
-            subprocess.check_output(["cfspeedtest", "--json"], timeout=timeout)
-            .decode()
-            .strip()
+    def run(self) -> TestResult:
+        try:
+            output = check_output(self.cmd, timeout=self.timeout).decode()
+        except CalledProcessError:
+            logging.exception("cfspeedtest CLI failed.")
+            return TestResult()
+        except TimeoutExpired:
+            logging.error("cfspeedtest CLI timed out and was stopped.")
+            return TestResult()
+
+        try:
+            data = json.loads(output)
+        except ValueError:
+            logging.error(
+                "cfspeedtest CLI did not return JSON. Received:\n%s", output
+            )
+            return TestResult()
+
+        if "error" in data:
+            # Socket error
+            logging.error("Something went wrong.\nError: %s", data["error"])
+            return TestResult()
+        # TODO: is there a better way to test if data is valid?
+        if "version" not in data:
+            return TestResult()
+
+        return TestResult(
+            data["test_location_city"]["value"],
+            data["test_location_region"]["value"],
+            data["latency_ms"]["value"],
+            data["Jitter_ms"]["value"],
+            download_mbps := data["90th_percentile_download_speed"]["value"],
+            megabits_to_bits(download_mbps),
+            upload_mbps := data["90th_percentile_upload_speed"]["value"],
+            megabits_to_bits(upload_mbps),
+            1,
         )
-    except subprocess.CalledProcessError:
-        logging.exception("cfspeedtest CLI failed.")
-        return TestResult()
-    except subprocess.TimeoutExpired:
-        logging.error("cfspeedtest CLI timed out and was stopped.")
-        return TestResult()
 
-    try:
-        data = json.loads(output)
-    except ValueError:
+    @classmethod
+    def _get_bin(cls) -> str | None:
+        """
+        Check for the presence of cfspeedtest.
+
+        This returns its path, or exits if it could not be found.
+        """
+        if (bin_loc := which("cfspeedtest")) is not None:
+            return bin_loc
         logging.error(
-            "cfspeedtest CLI did not produce valid JSON. Received:\n%s", output
+            "Cloudflare-Speedtest CLI binary not found.\n"
+            "Please install it by running 'pip install cloudflarepycli'\n"
+            "https://pypi.org/project/cloudflarepycli/"
         )
-        return TestResult()
-
-    if "error" in data:
-        # Socket error
-        logging.error("Something went wrong.\nError: %s", data["error"])
-        return TestResult()
-    # TODO: is there a better way to test if data is valid?
-    if "version" not in data:
-        return TestResult()
-
-    return TestResult(
-        data["test_location_city"]["value"],
-        data["test_location_region"]["value"],
-        data["latency_ms"]["value"],
-        data["Jitter_ms"]["value"],
-        download_mbps := data["90th_percentile_download_speed"]["value"],
-        megabits_to_bits(download_mbps),
-        upload_mbps := data["90th_percentile_upload_speed"]["value"],
-        megabits_to_bits(upload_mbps),
-        1,
-    )
+        sys.exit(1)
 
 
 app = Flask("Cloudflare-Speedtest-Exporter")
-metrics = Metrics(int(os.environ.get("SPEEDTEST_CACHE_FOR", "90")))
+runner = Speedtest(
+    int(os.environ.get("SPEEDTEST_CACHE_FOR", "90")),
+    int(os.environ.get("SPEEDTEST_TIMEOUT", "90")),
+)
 
 
 @app.route("/metrics")
 def update_results() -> Callable:
     """Update Prometheus metrics."""
-    if datetime.datetime.now() <= metrics.cache_until:
+    if datetime.datetime.now() <= runner.metrics.cache_until:
         return make_wsgi_app()
 
-    result = run_test()
-    metrics.update(result)
+    result = runner.run()
+    runner.metrics.update(result)
     logging.info(result)
 
     return make_wsgi_app()
@@ -173,23 +191,6 @@ def main_page() -> str:
     )
 
 
-def get_cfspeedtest() -> str | None:
-    """
-    Check for the presence of cfspeedtest.
-
-    This returns its path, or exits if it could not be found.
-    """
-    # TODO: use this result to execute cfspeedtest by its absolute path
-    if (bin_loc := which("cfspeedtest")) is not None:
-        return bin_loc
-    logging.error(
-        "Cloudflare-Speedtest CLI binary not found.\n"
-        "Please install it by running 'pip install cloudflarepycli'\n"
-        "https://pypi.org/project/cloudflarepycli/"
-    )
-    sys.exit(1)
-
-
 if __name__ == "__main__":
     logging.basicConfig(
         encoding="utf-8",
@@ -199,7 +200,6 @@ if __name__ == "__main__":
 
     logging.getLogger("waitress").disabled = True
 
-    get_cfspeedtest()
     PORT = int(os.getenv("SPEEDTEST_PORT", "9798"))
     logging.info(
         "Starting Cloudflare-Speedtest-Exporter on http://localhost:%s",
