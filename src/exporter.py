@@ -8,6 +8,7 @@ import sys
 from shutil import which
 from subprocess import CalledProcessError, TimeoutExpired, check_output
 from typing import NamedTuple
+from wsgiref.types import StartResponse, WSGIEnvironment
 
 from prometheus_client import Gauge, Info, make_wsgi_app, start_wsgi_server
 
@@ -146,6 +147,21 @@ class Speedtest:
             1,
         )
 
+    def wsgi_app(
+        self, environ: WSGIEnvironment, start_resp: StartResponse
+    ) -> list:
+        """WSGI endpoint to fetch cached metrics or run a new speedtest."""
+        if datetime.datetime.now() <= self.metrics.cache_until:
+            logging.debug("Metrics requested - returning from cache hit.")
+            return make_wsgi_app()(environ, start_resp)
+
+        logging.debug("Metrics requested - cache outdated, running speedtest.")
+        result = self.run()
+        self.metrics.update(result)
+        logging.info(result)
+
+        return make_wsgi_app()(environ, start_resp)
+
     @classmethod
     def _get_bin(cls) -> str | None:
         """
@@ -163,26 +179,6 @@ class Speedtest:
         sys.exit(1)
 
 
-runner = Speedtest(
-    int(os.environ.get("SPEEDTEST_CACHE_FOR", "90")),
-    int(os.environ.get("SPEEDTEST_TIMEOUT", "90")),
-)
-
-
-def update_results(environ, start_response) -> list:
-    """Update Prometheus metrics."""
-    if datetime.datetime.now() <= runner.metrics.cache_until:
-        logging.debug("Metrics requested - returning from cache hit.")
-        return make_wsgi_app()(environ, start_response)
-
-    logging.debug("Metrics requested - cache outdated, running speedtest.")
-    result = runner.run()
-    runner.metrics.update(result)
-    logging.info(result)
-
-    return make_wsgi_app()(environ, start_response)
-
-
 if __name__ == "__main__":
     logging.basicConfig(
         encoding="utf-8",
@@ -191,7 +187,10 @@ if __name__ == "__main__":
         format="[%(levelname)-8s] (%(asctime)s): %(message)s",
     )
 
-    logging.getLogger("waitress").disabled = True
+    runner = Speedtest(
+        int(os.environ.get("SPEEDTEST_CACHE_FOR", "90")),
+        int(os.environ.get("SPEEDTEST_TIMEOUT", "90")),
+    )
 
     PORT = int(os.getenv("SPEEDTEST_PORT", "9798"))
     logging.info(
@@ -199,9 +198,11 @@ if __name__ == "__main__":
         PORT,
     )
     server, thread = start_wsgi_server(PORT, "0.0.0.0")
-    server.set_app(update_results)
+    server.set_app(runner.wsgi_app)
+
     try:
         thread.join()
     except KeyboardInterrupt:
         logging.info("Exiting!")
         server.shutdown()
+        thread.join()
