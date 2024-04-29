@@ -8,7 +8,7 @@ import subprocess
 import sys
 from collections.abc import Callable
 from shutil import which
-from typing import NamedTuple
+from typing import NamedTuple, Self
 
 from flask import Flask
 from prometheus_client import Gauge, Info, make_wsgi_app
@@ -26,29 +26,7 @@ logging.basicConfig(
 # Disable Waitress Logs
 logging.getLogger("waitress").disabled = True
 
-# Create Prometheus metrics
-server = Info("speedtest_server", "Server used for the speedtest")
-ping = Gauge("speedtest_ping_latency_milliseconds", "Speedtest ping in ms")
-jitter = Gauge(
-    "speedtest_jitter_latency_milliseconds", "Speedtest jitter in ms"
-)
-download_speed = Gauge(
-    "speedtest_download_bits_per_second",
-    "Measured download speed in bit/s",
-)
-upload_speed = Gauge(
-    "speedtest_upload_bits_per_second",
-    "Measured upload speed in bit/s",
-)
-up = Gauge("speedtest_up", "Speedtest status (via scrape)")
 
-# Set cache duration for metrics (in seconds)
-CACHE_SECS = datetime.timedelta(int(os.environ.get("SPEEDTEST_CACHE_FOR", 0)))
-cache_until = datetime.datetime.fromtimestamp(0)
-TEST_CMD = ["cfspeedtest", "--json"]
-
-
-# TODO(?): factor out bps as calculated values
 class TestResult(NamedTuple):
     """Result of a speedtest."""
 
@@ -62,10 +40,56 @@ class TestResult(NamedTuple):
     upload_bps: int
     status: int
 
+    @property
+    def NULL() -> Self:
+        """
+        Return a null result.
+        
+        This could be done with defaults, but mandating the deliberate
+        construction of this reduces the likelihood of errors."""
+        return TestResult("", "", 0, 0, 0, 0, 0, 0, 0)
 
-# This can be done with defaults, but it seems better to mandate constructing
-# an empty result deliberately
-NULL_RESULT = TestResult("", "", 0, 0, 0, 0, 0, 0, 0)
+    def __repr__(self) -> str:
+        return (
+            "TestResult("
+            f"Server city = {self.server_city}, "
+            f"Server region = {self.server_region}, "
+            f"Jitter = {self.jitter} ms, "
+            f"Ping = {self.ping} ms, "
+            f"Download = {self.download_mbps} Mbit/s, "
+            f"Upload = {self.upload_mbps} Mbit/s"
+            ")"
+        )
+
+class Metrics:
+    """Prometheus metrics from a speedtest."""
+    def __init__(self, cache_secs: int):
+        self.server = Info("speedtest_server", "Server used for the speedtest")
+        self.ping = Gauge("speedtest_ping_latency_milliseconds", "Speedtest ping in ms")
+        self.jitter = Gauge("speedtest_jitter_latency_milliseconds", "Speedtest jitter in ms")
+        self.download_speed = Gauge(
+            "speedtest_download_bits_per_second",
+            "Measured download speed in bit/s",
+        )
+        self.upload_speed = Gauge(
+            "speedtest_upload_bits_per_second",
+            "Measured upload speed in bit/s",
+        )
+        self.up = Gauge("speedtest_up", "Speedtest status (via scrape)")
+        self.cache_until = datetime.datetime.fromtimestamp(0)
+        self.cache_secs = datetime.timedelta(seconds=cache_secs)
+
+    def update(self, result: TestResult):
+        self.server.info({
+            "server_location_city": result.server_city,
+            "server_location_region": result.server_region,
+        })
+        self.jitter.set(result.jitter)
+        self.ping.set(result.ping)
+        self.download_speed.set(result.download_bps)
+        self.upload_speed.set(result.upload_bps)
+        self.up.set(result.status)
+        self.cache_until = datetime.datetime.now() + self.cache_secs
 
 
 def megabits_to_bits(megabits: float) -> int:
@@ -78,6 +102,9 @@ def megabits_to_bits(megabits: float) -> int:
     return int(megabits * (10**6))
 
 
+metrics = Metrics(int(os.environ.get("SPEEDTEST_CACHE_FOR", "90")))
+TEST_CMD = ["cfspeedtest", "--json"]
+
 def run_test() -> TestResult:
     """Run the speedtest and parse the results."""
     timeout = int(os.environ.get("SPEEDTEST_TIMEOUT", "90"))
@@ -88,10 +115,10 @@ def run_test() -> TestResult:
         )
     except subprocess.CalledProcessError:
         logging.exception("cfspeedtest CLI failed.")
-        return NULL_RESULT
+        return TestResult.NULL
     except subprocess.TimeoutExpired:
         logging.error("cfspeedtest CLI timed out and was stopped.")
-        return NULL_RESULT
+        return TestResult.NULL
 
     try:
         data = json.loads(output)
@@ -99,15 +126,15 @@ def run_test() -> TestResult:
         logging.error(
             "cfspeedtest CLI did not produce valid JSON. Received:\n%s", output
         )
-        return NULL_RESULT
+        return TestResult.NULL
 
     if "error" in data:
         # Socket error
         logging.error("Something went wrong.\nError: %s", data["error"])
-        return NULL_RESULT
+        return TestResult.NULL
     # TODO: is there a better way to test if data is valid?
     if "version" not in data:
-        return NULL_RESULT
+        return TestResult.NULL
 
     return TestResult(
         data["test_location_city"]["value"],
@@ -125,39 +152,13 @@ def run_test() -> TestResult:
 @app.route("/metrics")
 def update_results() -> Callable:
     """Update Prometheus metrics."""
-    global cache_until
-
-    if datetime.datetime.now() <= cache_until:
+    if datetime.datetime.now() <= metrics.cache_until:
         return make_wsgi_app()
 
     result = run_test()
-    server.info(
-        {
-            "server_location_city": result.server_city,
-            "server_location_region": result.server_region,
-        }
-    )
-    jitter.set(result.jitter)
-    ping.set(result.ping)
-    download_speed.set(result.download_bps)
-    upload_speed.set(result.upload_bps)
-    up.set(result.status)
-    logging.info(
-        "Server City=%s "
-        "Server Region=%s "
-        "Jitter=%sms "
-        "Ping=%sms "
-        "Download=%sMbit/s "
-        "Upload=%sMbit/s",
-        result.server_city,
-        result.server_region,
-        result.jitter,
-        result.ping,
-        result.download_mbps,
-        result.upload_mbps,
-    )
+    metrics.update(result)
+    logging.info(result)
 
-    cache_until = datetime.datetime.now() + CACHE_SECS
     return make_wsgi_app()
 
 
