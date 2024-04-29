@@ -8,47 +8,32 @@ import subprocess
 import sys
 from collections.abc import Callable
 from shutil import which
-from typing import NamedTuple, Self
+from typing import NamedTuple
 
+# TODO: determine viability of replacing flask / waitress
+# with prometheus_client.start_wsgi_server - would reduce build size
 from flask import Flask
 from prometheus_client import Gauge, Info, make_wsgi_app
 from waitress import serve
 
-app = Flask("Cloudflare-Speedtest-Exporter")
-
-# Setup logging with a specific format and level
-logging.basicConfig(
-    encoding="utf-8",
-    level=logging.DEBUG,
-    format="level=%(levelname)s datetime=%(asctime)s %(message)s",
-)
-
-# Disable Waitress Logs
-logging.getLogger("waitress").disabled = True
-
 
 class TestResult(NamedTuple):
-    """Result of a speedtest."""
+    """
+    Result of a speedtest.
 
-    server_city: str
-    server_region: str
-    ping: float
-    jitter: float
-    download_mbps: float
-    download_bps: int
-    upload_mbps: float
-    upload_bps: int
-    status: int
+    Note that constructing this with no attributes should only be used in the
+    case of an error.
+    """
 
-    @property
-    def null() -> Self:
-        """
-        Return a null result.
-
-        This could be done with defaults, but mandating the deliberate
-        construction of this reduces the likelihood of errors.
-        """
-        return TestResult("", "", 0, 0, 0, 0, 0, 0, 0)
+    server_city: str = ""
+    server_region: str = ""
+    ping: float = 0
+    jitter: float = 0
+    download_mbps: float = 0
+    download_bps: int = 0
+    upload_mbps: float = 0
+    upload_bps: int = 0
+    status: int = 0
 
     def __repr__(self) -> str:
         """Produce a readable representation of a test result with units."""
@@ -116,24 +101,22 @@ def megabits_to_bits(megabits: float) -> int:
     return int(megabits * (10**6))
 
 
-metrics = Metrics(int(os.environ.get("SPEEDTEST_CACHE_FOR", "90")))
-TEST_CMD = ["cfspeedtest", "--json"]
-
-
 def run_test() -> TestResult:
     """Run the speedtest and parse the results."""
     timeout = int(os.environ.get("SPEEDTEST_TIMEOUT", "90"))
 
     try:
         output = (
-            subprocess.check_output(TEST_CMD, timeout=timeout).decode().strip()
+            subprocess.check_output(["cfspeedtest", "--json"], timeout=timeout)
+            .decode()
+            .strip()
         )
     except subprocess.CalledProcessError:
         logging.exception("cfspeedtest CLI failed.")
-        return TestResult.null
+        return TestResult()
     except subprocess.TimeoutExpired:
         logging.error("cfspeedtest CLI timed out and was stopped.")
-        return TestResult.null
+        return TestResult()
 
     try:
         data = json.loads(output)
@@ -141,15 +124,15 @@ def run_test() -> TestResult:
         logging.error(
             "cfspeedtest CLI did not produce valid JSON. Received:\n%s", output
         )
-        return TestResult.null
+        return TestResult()
 
     if "error" in data:
         # Socket error
         logging.error("Something went wrong.\nError: %s", data["error"])
-        return TestResult.null
+        return TestResult()
     # TODO: is there a better way to test if data is valid?
     if "version" not in data:
-        return TestResult.null
+        return TestResult()
 
     return TestResult(
         data["test_location_city"]["value"],
@@ -162,6 +145,10 @@ def run_test() -> TestResult:
         megabits_to_bits(upload_mbps),
         1,
     )
+
+
+app = Flask("Cloudflare-Speedtest-Exporter")
+metrics = Metrics(int(os.environ.get("SPEEDTEST_CACHE_FOR", "90")))
 
 
 @app.route("/metrics")
@@ -186,19 +173,33 @@ def main_page() -> str:
     )
 
 
-def check_cfspeedtest() -> None:
-    """Check for the presence of cfspeedtest and exit if it is not found."""
-    if which("cfspeedtest") is None:
-        logging.error(
-            "Cloudflare-Speedtest CLI binary not found.\n"
-            "Please install it by running 'pip install cloudflarepycli'\n"
-            "https://pypi.org/project/cloudflarepycli/"
-        )
-        sys.exit(1)
+def get_cfspeedtest() -> str | None:
+    """
+    Check for the presence of cfspeedtest.
+
+    This returns its path, or exits if it could not be found.
+    """
+    # TODO: use this result to execute cfspeedtest by its absolute path
+    if (bin_loc := which("cfspeedtest")) is not None:
+        return bin_loc
+    logging.error(
+        "Cloudflare-Speedtest CLI binary not found.\n"
+        "Please install it by running 'pip install cloudflarepycli'\n"
+        "https://pypi.org/project/cloudflarepycli/"
+    )
+    sys.exit(1)
 
 
 if __name__ == "__main__":
-    check_cfspeedtest()
+    logging.basicConfig(
+        encoding="utf-8",
+        level=logging.DEBUG,
+        format="level=%(levelname)s datetime=%(asctime)s %(message)s",
+    )
+
+    logging.getLogger("waitress").disabled = True
+
+    get_cfspeedtest()
     PORT = int(os.getenv("SPEEDTEST_PORT", "9798"))
     logging.info(
         "Starting Cloudflare-Speedtest-Exporter on http://localhost:%s",
