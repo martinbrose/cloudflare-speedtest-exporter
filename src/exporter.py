@@ -179,8 +179,10 @@ runner = Speedtest(
 def update_results() -> Callable:
     """Update Prometheus metrics."""
     if datetime.datetime.now() <= runner.metrics.cache_until:
+        logging.debug("Metrics requested - returning from cache hit.")
         return make_wsgi_app()
 
+    logging.debug("Metrics requested - cache outdated, running speedtest.")
     result = runner.run()
     runner.metrics.update(result)
     logging.info(result)
@@ -201,7 +203,8 @@ if __name__ == "__main__":
     logging.basicConfig(
         encoding="utf-8",
         level=logging.DEBUG,
-        format="level=%(levelname)s datetime=%(asctime)s %(message)s",
+        datefmt="%F %T",
+        format="[%(levelname)-8s] (%(asctime)s): %(message)s",
     )
 
     logging.getLogger("waitress").disabled = True
