@@ -7,7 +7,9 @@ import os
 import sys
 from shutil import which
 from subprocess import CalledProcessError, TimeoutExpired, check_output
+from threading import Thread
 from typing import NamedTuple
+from wsgiref.simple_server import WSGIServer
 from wsgiref.types import StartResponse, WSGIEnvironment
 
 from prometheus_client import Gauge, Info, make_wsgi_app, start_wsgi_server
@@ -98,14 +100,19 @@ def megabits_to_bits(megabits: float) -> int:
 
 
 class Speedtest:
-    """Runner class for cfspeedtest."""
+    """Runner class for cfspeedtest and the metrics endpoint."""
 
     def __init__(
-        self, cache_secs: int, timeout: int, cf_bin: str | None = None
+        self,
+        cache_secs: int,
+        timeout: int,
+        port: int,
+        cf_bin: str | None = None,
     ) -> None:
         """Instantiate the runner."""
         self.metrics = Metrics(cache_secs)
         self.timeout = timeout
+        self.server_port = port
         self.cmd = [cf_bin or self._get_bin(), "--json"]
 
     def run(self) -> TestResult:
@@ -162,6 +169,17 @@ class Speedtest:
 
         return make_wsgi_app()(environ, start_resp)
 
+    def start_server(self) -> tuple[WSGIServer, Thread]:
+        """Start a WSGI server for the endpoint."""
+        logging.info(
+            "Starting Cloudflare-Speedtest-Exporter on http://localhost:%s",
+            self.server_port,
+        )
+
+        server, thread = start_wsgi_server(self.server_port, "0.0.0.0")
+        server.set_app(self.wsgi_app)
+        return (server, thread)
+
     @classmethod
     def _get_bin(cls) -> str | None:
         """
@@ -190,15 +208,9 @@ if __name__ == "__main__":
     runner = Speedtest(
         int(os.environ.get("SPEEDTEST_CACHE_FOR", "90")),
         int(os.environ.get("SPEEDTEST_TIMEOUT", "90")),
+        int(os.getenv("SPEEDTEST_PORT", "9798")),
     )
-
-    PORT = int(os.getenv("SPEEDTEST_PORT", "9798"))
-    logging.info(
-        "Starting Cloudflare-Speedtest-Exporter on http://localhost:%s",
-        PORT,
-    )
-    server, thread = start_wsgi_server(PORT, "0.0.0.0")
-    server.set_app(runner.wsgi_app)
+    server, thread = runner.start_server()
 
     try:
         thread.join()
