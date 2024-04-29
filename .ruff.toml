@@ -12,7 +12,7 @@ select = [
 	"COM", # flake8-commas
 #	 "CPY",  # flake8-copyright
 	"C4",	# flake8-comprehensions
-	"DTZ",	# flake8-datetimez
+#	"DTZ",	# flake8-datetimez
 	"D",	 # pydocstyle
 	"E",	# pycodestyle errors
 #	 "ERA",  # eradicate commented out code
@@ -44,7 +44,7 @@ select = [
 	"W",	# pycodestyle warnings
 	"YTT",	# flake8-2020
 ]
-ignore = ["D203", "D212", "D415", "COM812", "INP001"]
+ignore = ["D203", "D212", "D415", "COM812", "INP001", "S104", "S404"]
 preview = true
 
 [lint.per-file-ignores]

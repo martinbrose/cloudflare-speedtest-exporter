@@ -41,15 +41,17 @@ class TestResult(NamedTuple):
     status: int
 
     @property
-    def NULL() -> Self:
+    def null() -> Self:
         """
         Return a null result.
-        
+
         This could be done with defaults, but mandating the deliberate
-        construction of this reduces the likelihood of errors."""
+        construction of this reduces the likelihood of errors.
+        """
         return TestResult("", "", 0, 0, 0, 0, 0, 0, 0)
 
     def __repr__(self) -> str:
+        """Produce a readable representation of a test result with units."""
         return (
             "TestResult("
             f"Server city = {self.server_city}, "
@@ -61,12 +63,21 @@ class TestResult(NamedTuple):
             ")"
         )
 
+
 class Metrics:
     """Prometheus metrics from a speedtest."""
-    def __init__(self, cache_secs: int):
+
+    def __init__(self, cache_secs: int) -> None:
+        """Instantiate the metrics."""
         self.server = Info("speedtest_server", "Server used for the speedtest")
-        self.ping = Gauge("speedtest_ping_latency_milliseconds", "Speedtest ping in ms")
-        self.jitter = Gauge("speedtest_jitter_latency_milliseconds", "Speedtest jitter in ms")
+        self.ping = Gauge(
+            "speedtest_ping_latency_milliseconds",
+            "Speedtest ping in ms",
+        )
+        self.jitter = Gauge(
+            "speedtest_jitter_latency_milliseconds",
+            "Speedtest jitter in ms",
+        )
         self.download_speed = Gauge(
             "speedtest_download_bits_per_second",
             "Measured download speed in bit/s",
@@ -79,11 +90,14 @@ class Metrics:
         self.cache_until = datetime.datetime.fromtimestamp(0)
         self.cache_secs = datetime.timedelta(seconds=cache_secs)
 
-    def update(self, result: TestResult):
-        self.server.info({
-            "server_location_city": result.server_city,
-            "server_location_region": result.server_region,
-        })
+    def update(self, result: TestResult) -> None:
+        """Update the metrics and set the cache."""
+        self.server.info(
+            {
+                "server_location_city": result.server_city,
+                "server_location_region": result.server_region,
+            }
+        )
         self.jitter.set(result.jitter)
         self.ping.set(result.ping)
         self.download_speed.set(result.download_bps)
@@ -105,6 +119,7 @@ def megabits_to_bits(megabits: float) -> int:
 metrics = Metrics(int(os.environ.get("SPEEDTEST_CACHE_FOR", "90")))
 TEST_CMD = ["cfspeedtest", "--json"]
 
+
 def run_test() -> TestResult:
     """Run the speedtest and parse the results."""
     timeout = int(os.environ.get("SPEEDTEST_TIMEOUT", "90"))
@@ -115,10 +130,10 @@ def run_test() -> TestResult:
         )
     except subprocess.CalledProcessError:
         logging.exception("cfspeedtest CLI failed.")
-        return TestResult.NULL
+        return TestResult.null
     except subprocess.TimeoutExpired:
         logging.error("cfspeedtest CLI timed out and was stopped.")
-        return TestResult.NULL
+        return TestResult.null
 
     try:
         data = json.loads(output)
@@ -126,15 +141,15 @@ def run_test() -> TestResult:
         logging.error(
             "cfspeedtest CLI did not produce valid JSON. Received:\n%s", output
         )
-        return TestResult.NULL
+        return TestResult.null
 
     if "error" in data:
         # Socket error
         logging.error("Something went wrong.\nError: %s", data["error"])
-        return TestResult.NULL
+        return TestResult.null
     # TODO: is there a better way to test if data is valid?
     if "version" not in data:
-        return TestResult.NULL
+        return TestResult.null
 
     return TestResult(
         data["test_location_city"]["value"],
