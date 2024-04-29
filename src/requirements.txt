@@ -1,5 +1,3 @@
-Flask==3.0.3
 prometheus_client==0.20.0
-waitress==3.0.0
 cloudflarepycli==1.8.1
 

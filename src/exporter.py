@@ -5,16 +5,11 @@ import json
 import logging
 import os
 import sys
-from collections.abc import Callable
 from shutil import which
 from subprocess import CalledProcessError, TimeoutExpired, check_output
 from typing import NamedTuple
 
-# TODO: determine viability of replacing flask / waitress
-# with prometheus_client.start_wsgi_server - would reduce build size
-from flask import Flask
-from prometheus_client import Gauge, Info, make_wsgi_app
-from waitress import serve
+from prometheus_client import Gauge, Info, make_wsgi_app, start_wsgi_server
 
 
 class TestResult(NamedTuple):
@@ -168,35 +163,24 @@ class Speedtest:
         sys.exit(1)
 
 
-app = Flask("Cloudflare-Speedtest-Exporter")
 runner = Speedtest(
     int(os.environ.get("SPEEDTEST_CACHE_FOR", "90")),
     int(os.environ.get("SPEEDTEST_TIMEOUT", "90")),
 )
 
 
-@app.route("/metrics")
-def update_results() -> Callable:
+def update_results(environ, start_response) -> list:
     """Update Prometheus metrics."""
     if datetime.datetime.now() <= runner.metrics.cache_until:
         logging.debug("Metrics requested - returning from cache hit.")
-        return make_wsgi_app()
+        return make_wsgi_app()(environ, start_response)
 
     logging.debug("Metrics requested - cache outdated, running speedtest.")
     result = runner.run()
     runner.metrics.update(result)
     logging.info(result)
 
-    return make_wsgi_app()
-
-
-@app.route("/")
-def main_page() -> str:
-    """Build the main webpage."""
-    return (
-        "<h1>Welcome to Cloudflare-Speedtest-Exporter.</h1>"
-        + "Click <a href='/metrics'>here</a> to see metrics."
-    )
+    return make_wsgi_app()(environ, start_response)
 
 
 if __name__ == "__main__":
@@ -214,4 +198,10 @@ if __name__ == "__main__":
         "Starting Cloudflare-Speedtest-Exporter on http://localhost:%s",
         PORT,
     )
-    serve(app, host="0.0.0.0", port=PORT)
+    server, thread = start_wsgi_server(PORT, "0.0.0.0")
+    server.set_app(update_results)
+    try:
+        thread.join()
+    except KeyboardInterrupt:
+        logging.info("Exiting!")
+        server.shutdown()
