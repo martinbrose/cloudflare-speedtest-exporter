@@ -4,10 +4,10 @@ import datetime
 import json
 import logging
 import os
-from subprocess import check_output, TimeoutExpired, CalledProcessError
 import sys
 from collections.abc import Callable
 from shutil import which
+from subprocess import CalledProcessError, TimeoutExpired, check_output
 from typing import NamedTuple
 
 # TODO: determine viability of replacing flask / waitress
@@ -102,12 +102,18 @@ def megabits_to_bits(megabits: float) -> int:
 
 
 class Speedtest:
-    def __init__(self, cache_secs: int, timeout: int, cf_bin: str | None = None):
+    """Runner class for cfspeedtest."""
+
+    def __init__(
+        self, cache_secs: int, timeout: int, cf_bin: str | None = None
+    ) -> None:
+        """Instantiate the runner."""
         self.metrics = Metrics(cache_secs)
         self.timeout = timeout
         self.cmd = [cf_bin or self._get_bin(), "--json"]
 
     def run(self) -> TestResult:
+        """Run the speedtest."""
         try:
             output = check_output(self.cmd, timeout=self.timeout).decode()
         except CalledProcessError:
