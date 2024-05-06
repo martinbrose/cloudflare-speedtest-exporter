@@ -74,7 +74,7 @@ class Speedtest:
     ) -> list:
         """WSGI endpoint to fetch cached metrics or run a new speedtest."""
         if environ["PATH_INFO"] != "/metrics":
-            start_resp("200 OK", [])
+            start_resp("200 OK", [("Content-Type", "text/html; charset=utf-8")])
             return [
                 b"<h1>Welcome to Cloudflare-Speedtest-Exporter</h1>",
                 b"Click <a href='/metrics'>here</a> to see metrics.",
