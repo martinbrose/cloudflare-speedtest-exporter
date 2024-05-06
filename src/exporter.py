@@ -73,6 +73,12 @@ class Speedtest:
         self, environ: WSGIEnvironment, start_resp: StartResponse
     ) -> list:
         """WSGI endpoint to fetch cached metrics or run a new speedtest."""
+        if environ["PATH_INFO"] != "/metrics":
+            start_resp("200 OK", [])
+            return [
+                b"<h1>Welcome to Cloudflare-Speedtest-Exporter</h1>",
+                b"Click <a href='/metrics'>here</a> to see metrics.",
+            ]
         if not self.metrics.expired:
             logging.debug("Metrics requested - returning from cache hit.")
             return make_wsgi_app()(environ, start_resp)
