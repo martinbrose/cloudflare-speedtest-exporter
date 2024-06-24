@@ -18,10 +18,10 @@ class TestResult(NamedTuple):
     server_region: str = ""
     ping: float = 0
     jitter: float = 0
-    download_mbps: float = 0
     download_bps: int = 0
-    upload_mbps: float = 0
+    download_mbps: float = 0
     upload_bps: int = 0
+    upload_mbps: float = 0
     status: int = 0
 
     def __repr__(self) -> str:
@@ -85,11 +85,6 @@ class Metrics:
         self.cache_until = datetime.datetime.now() + self.cache_secs
 
 
-def megabits_to_bits(megabits: float) -> int:
-    """
-    Convert Mbit/s to bit/s.
-
-    NOTE: This truncates, because fractional bits would constitute a logic
-    error.
-    """
-    return int(megabits * (10**6))
+def bits_to_megabits(bits: int) -> float:
+    """Convert bit/s to Mbit/s with 2 decimal places."""
+    return round(bits / 1e6, 2)

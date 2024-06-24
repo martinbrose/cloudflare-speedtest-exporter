@@ -1,17 +1,15 @@
 """cfspeedtest exporter for Prometheus."""
 
-import json
 import logging
 import os
-import sys
-from shutil import which
-from subprocess import CalledProcessError, TimeoutExpired, check_output
 from threading import Thread
 from wsgiref.simple_server import WSGIServer
 from wsgiref.types import StartResponse, WSGIEnvironment
 
+from cfspeedtest import CloudflareSpeedtest
 from prometheus_client import make_wsgi_app, start_wsgi_server
-from utils import Metrics, TestResult, megabits_to_bits
+from requests import ConnectionError, Timeout
+from utils import Metrics, TestResult, bits_to_megabits
 
 
 class Speedtest:
@@ -20,52 +18,34 @@ class Speedtest:
     def __init__(
         self,
         cache_secs: int,
-        timeout: int,
+        timeout: tuple[float, float] | float,
         port: int,
-        cf_bin: str | None = None,
     ) -> None:
         """Instantiate the runner."""
         self.metrics = Metrics(cache_secs)
-        self.timeout = timeout
         self.server_port = port
-        self.cmd = [cf_bin or self._get_bin(), "--json"]
+        self.suite = CloudflareSpeedtest(timeout=timeout)
 
     def run(self) -> TestResult:
         """Run the speedtest."""
         try:
-            output = check_output(self.cmd, timeout=self.timeout).decode()
-        except CalledProcessError:
-            logging.exception("cfspeedtest CLI failed.")
+            results = self.suite.run_all()
+        except ConnectionError:
+            logging.error("cfspeedtest could not connect.")
             return TestResult()
-        except TimeoutExpired:
-            logging.error("cfspeedtest CLI timed out and was stopped.")
-            return TestResult()
-
-        try:
-            data = json.loads(output)
-        except ValueError:
-            logging.error(
-                "cfspeedtest CLI did not return JSON. Received:\n%s", output
-            )
-            return TestResult()
-
-        if "error" in data:
-            # Socket error
-            logging.error("Something went wrong.\nError: %s", data["error"])
-            return TestResult()
-        # TODO: is there a better way to test if data is valid?
-        if "version" not in data:
+        except Timeout:
+            logging.error("A connection timed out and was stopped.")
             return TestResult()
 
         return TestResult(
-            data["test_location_city"]["value"],
-            data["test_location_region"]["value"],
-            data["latency_ms"]["value"],
-            data["Jitter_ms"]["value"],
-            download_mbps := data["90th_percentile_download_speed"]["value"],
-            megabits_to_bits(download_mbps),
-            upload_mbps := data["90th_percentile_upload_speed"]["value"],
-            megabits_to_bits(upload_mbps),
+            results["meta"]["location_city"].value,
+            results["meta"]["location_region"].value,
+            results["tests"]["latency"].value,
+            results["tests"]["jitter"].value,
+            down_bps := results["tests"]["90th_percentile_down_bps"].value,
+            bits_to_megabits(down_bps),
+            up_bps := results["tests"]["90th_percentile_up_bps"].value,
+            bits_to_megabits(up_bps),
             1,
         )
 
@@ -100,22 +80,6 @@ class Speedtest:
         server, thread = start_wsgi_server(self.server_port, "0.0.0.0")
         server.set_app(self.wsgi_app)
         return (server, thread)
-
-    @classmethod
-    def _get_bin(cls) -> str | None:
-        """
-        Check for the presence of cfspeedtest.
-
-        This returns its path, or exits if it could not be found.
-        """
-        if (bin_loc := which("cfspeedtest")) is not None:
-            return bin_loc
-        logging.error(
-            "Cloudflare-Speedtest CLI binary not found.\n"
-            "Please install it by running 'pip install cloudflarepycli'\n"
-            "https://pypi.org/project/cloudflarepycli/"
-        )
-        sys.exit(1)
 
 
 if __name__ == "__main__":
