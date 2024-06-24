@@ -1,270 +1,105 @@
-# Import necessary libraries
-import datetime
-import json
+"""cfspeedtest exporter for Prometheus."""
+
 import logging
 import os
-import subprocess
-import socket
-from dataclasses import dataclass, field
-from shutil import which
-from typing import Optional
+from threading import Thread
+from wsgiref.simple_server import WSGIServer
+from wsgiref.types import StartResponse, WSGIEnvironment
 
-from flask import Flask
-from prometheus_client import make_wsgi_app, Gauge, Info
-from waitress import serve
-
-from utils import megabits_to_bits, is_json
+from cfspeedtest import CloudflareSpeedtest
+from prometheus_client import make_wsgi_app, start_wsgi_server
+from requests import ConnectionError, Timeout
+from utils import Metrics, TestResult, bits_to_megabits
 
 
-@dataclass
-class TestResult:
-    """
-    Represents the result of a speed test.
+class Speedtest:
+    """Runner class for cfspeedtest and the metrics endpoint."""
 
-    Attributes:
-        server_city (Optional[str]): The city of the server used for the speed test.
-        server_region (Optional[str]): The region of the server used for the speed test.
-        ping (Optional[float]): The ping time in milliseconds.
-        jitter (Optional[float]): The jitter time in milliseconds.
-        download_mbps (Optional[float]): The download speed in megabits per second.
-        download (Optional[float]): The download speed in bits per second.
-        upload_mbps (Optional[float]): The upload speed in megabits per second.
-        upload (Optional[float]): The upload speed in bits per second.
-        status (Optional[int]): The status of the speed test.
+    def __init__(
+        self,
+        cache_secs: int,
+        timeout: tuple[float, float] | float,
+        port: int,
+    ) -> None:
+        """Instantiate the runner."""
+        self.metrics = Metrics(cache_secs)
+        self.server_port = port
+        self.suite = CloudflareSpeedtest(timeout=timeout)
 
-    Methods:
-        run_test(): Runs the speed test.
-    """
-
-    server_city: Optional[str] = field(default="")
-    server_region: Optional[str] = field(default="")
-    ping: Optional[float] = field(default=0.0)
-    jitter: Optional[float] = field(default=0.0)
-    download_mbps: Optional[float] = field(default=0.0)
-    download: Optional[float] = field(default=0.0)
-    upload_mbps: Optional[float] = field(default=0.0)
-    upload: Optional[float] = field(default=0.0)
-    status: Optional[int] = field(default=0)
-
-    def run_test(self):
-        """
-        Runs the speed test and parses the results.
-
-        Returns:
-            None
-        """
-        output = self._execute_speedtest()
-        if output:
-            self._parse_results(output)
-
-    def _execute_speedtest(self):
-        timeout = int(os.environ.get('SPEEDTEST_TIMEOUT', 90))
-        cmd = ["cfspeedtest", "--json"]
-
+    def run(self) -> TestResult:
+        """Run the speedtest."""
         try:
-            socket.create_connection(("speed.cloudflare.com", 80))
-        except OSError:
-            logging.error('No internet connection. Please check your network settings.')
-            return None
+            results = self.suite.run_all()
+        except ConnectionError:
+            logging.error("cfspeedtest could not connect.")
+            return TestResult()
+        except Timeout:
+            logging.error("A connection timed out and was stopped.")
+            return TestResult()
 
-        try:
-            output = subprocess.check_output(cmd, timeout=timeout)
-            return output.decode().rsplit('}', 1)[0] + "}"
-        except subprocess.CalledProcessError as e:
-            output = e.output
-            if not is_json(output) and len(output) > 0:
-                logging.error('CFSpeedtest CLI Error occurred that was not in JSON format')
-            return None
-        except subprocess.TimeoutExpired:
-            logging.error('CFSpeedtest CLI process took too long to complete and was killed.')
-            return None
-
-    def _parse_results(self, output):
-        data = json.loads(output)
-        if "error" in data:
-            print('Something went wrong')
-            print(data['error'])
-            return
-        if "version" in data:
-            self.server_city = data['test_location_city']['value']
-            self.server_region = data['test_location_region']['value']
-            self.ping = data['latency_ms']['value']
-            self.jitter = data['Jitter_ms']['value']
-            self.download_mbps = data['90th_percentile_download_speed']['value']
-            self.download = megabits_to_bits(self.download_mbps)
-            self.upload_mbps = data['90th_percentile_upload_speed']['value']
-            self.upload = megabits_to_bits(self.upload_mbps)
-            self.status = 1
-
-
-class SpeedTest:
-    """
-    Class representing a speed test.
-
-    Attributes:
-        cache_seconds (int): The number of seconds to cache the speed test results.
-        cache_until (datetime.datetime): The datetime until which the cache is valid.
-    """
-
-    def __init__(self):
-        self.cache_seconds = int(os.environ.get('SPEEDTEST_CACHE_FOR', 0))
-        self.cache_until = datetime.datetime.fromtimestamp(0)
-
-    def update_cache(self):
-        """
-        Updates the cache by setting the cache_until attribute to the current time plus the cache_seconds.
-        """
-        self.cache_until = datetime.datetime.now() + datetime.timedelta(seconds=self.cache_seconds)
-
-    def is_cache_expired(self):
-        """
-        Checks if the cache has expired.
-
-        Returns:
-            bool: True if the cache has expired, False otherwise.
-        """
-        return datetime.datetime.now() > self.cache_until
-
-    def run_speedtest(self):
-        """
-        Runs the speed test and returns the result if the cache has expired.
-
-        Returns:
-            TestResult or None: The speed test result if the cache has expired, None otherwise.
-        """
-        if self.is_cache_expired():
-            result = TestResult()
-            result.run_test()
-            logging.info(f"Server City={result.server_city} Server Region={result.server_region} "
-                         f"Jitter={result.jitter}ms Ping={result.ping}ms "
-                         f"Download={result.download_mbps}Mbps Upload={result.upload_mbps}Mbps")
-            self.update_cache()
-            return result
-        return None
-
-
-class Metrics:
-    """
-    Class representing the metrics for the speedtest exporter.
-
-    Attributes:
-        server (Info): Information about the server used for the speedtest.
-        jitter (Gauge): Speedtest jitter in milliseconds.
-        ping (Gauge): Speedtest ping in milliseconds.
-        download_speed (Gauge): Measured download speed in bits per second.
-        upload_speed (Gauge): Measured upload speed in bits per second.
-        up (Gauge): Speedtest status (via scrape).
-    """
-
-    def __init__(self):
-        self.server = Info(
-            'speedtest_server',
-            'Information about the server used for the speedtest'
-        )
-        self.jitter = Gauge(
-            'speedtest_jitter_latency_milliseconds',
-            'Speedtest jitter in ms'
-        )
-        self.ping = Gauge(
-            'speedtest_ping_latency_milliseconds',
-            'Speedtest ping in ms'
-        )
-        self.download_speed = Gauge(
-            'speedtest_download_bits_per_second',
-            'Measured download speed in bit/s'
-        )
-        self.upload_speed = Gauge(
-            'speedtest_upload_bits_per_second',
-            'Measured upload speed in bit/s'
-        )
-        self.up = Gauge(
-            'speedtest_up',
-            'Speedtest status (via scrape)'
+        return TestResult(
+            results["meta"]["location_city"].value,
+            results["meta"]["location_region"].value,
+            results["tests"]["latency"].value,
+            results["tests"]["jitter"].value,
+            down_bps := results["tests"]["90th_percentile_down_bps"].value,
+            bits_to_megabits(down_bps),
+            up_bps := results["tests"]["90th_percentile_up_bps"].value,
+            bits_to_megabits(up_bps),
+            1,
         )
 
-    def update_metrics(self, result):
-        """
-        Update the metrics with the given speedtest result.
+    def wsgi_app(
+        self, environ: WSGIEnvironment, start_resp: StartResponse
+    ) -> list:
+        """WSGI endpoint to fetch cached metrics or run a new speedtest."""
+        if environ["PATH_INFO"] != "/metrics":
+            start_resp("200 OK", [("Content-Type", "text/html; charset=utf-8")])
+            return [
+                b"<h1>Welcome to Cloudflare-Speedtest-Exporter</h1>",
+                b"Click <a href='/metrics'>here</a> to see metrics.",
+            ]
+        if not self.metrics.expired:
+            logging.debug("Metrics requested - returning from cache hit.")
+            return make_wsgi_app()(environ, start_resp)
 
-        Args:
-            result: The speedtest result object containing the metrics to update.
-        """
-        self.server.info({
-            'server_location_city': str(result.server_city),
-            'server_location_region': str(result.server_region)
-        })
-        self.jitter.set(result.jitter)
-        self.ping.set(result.ping)
-        self.download_speed.set(result.download)
-        self.upload_speed.set(result.upload)
-        self.up.set(result.status)
+        logging.debug("Metrics requested - cache outdated, running speedtest.")
+        result = self.run()
+        self.metrics.update(result)
+        logging.info(result)
 
+        return make_wsgi_app()(environ, start_resp)
 
-def check_for_binary():
-    """
-    Checks if the Cloudflare-Speedtest CLI binary is installed.
-    
-    If the binary is not found, an error message is logged and the program exits.
-    To install the binary, run 'pip install cloudflarepycli'.
-    More information can be found at https://pypi.org/project/cloudflarepycli/.
-    """
-    if which("cfspeedtest") is None:
-        logging.error("Cloudflare-Speedtest CLI binary not found.\n" +
-                      "Please install it by running\n" +
-                      "'pip install cloudflarepycli'\n" +
-                      "https://pypi.org/project/cloudflarepycli/")
-        exit(1)
+    def start_server(self) -> tuple[WSGIServer, Thread]:
+        """Start a WSGI server for the endpoint."""
+        logging.info(
+            "Starting Cloudflare-Speedtest-Exporter on http://localhost:%s",
+            self.server_port,
+        )
 
-
-def setup_app(app):
-    """
-    Set up the application with the specified configuration.
-
-    Args:
-        app: The application object.
-
-    Returns:
-        None
-    """
-    format_string = 'level=%(levelname)s datetime=%(asctime)s %(message)s'
-    logging.basicConfig(encoding='utf-8',
-                        level=logging.DEBUG,
-                        format=format_string)
-
-    # Disable Waitress Logs
-    log = logging.getLogger('waitress')
-    log.disabled = True
+        server, thread = start_wsgi_server(self.server_port, "0.0.0.0")
+        server.set_app(self.wsgi_app)
+        return (server, thread)
 
 
-# Create Flask app
-app = Flask("Cloudflare-Speedtest-Exporter")
+if __name__ == "__main__":
+    logging.basicConfig(
+        encoding="utf-8",
+        level=logging.DEBUG,
+        datefmt="%F %T",
+        format="[%(levelname)-8s] (%(asctime)s): %(message)s",
+    )
 
-# Create instances
-speedtest = SpeedTest()
-metrics = Metrics()
+    runner = Speedtest(
+        int(os.environ.get("SPEEDTEST_CACHE_FOR", "90")),
+        int(os.environ.get("SPEEDTEST_TIMEOUT", "90")),
+        int(os.getenv("SPEEDTEST_PORT", "9798")),
+    )
+    server, thread = runner.start_server()
 
-
-# Define route for the main page
-@app.route("/")
-def main_page():
-    return ("<h1>Welcome to Cloudflare-Speedtest-Exporter.</h1>" +
-            "Click <a href='/metrics'>here</a> to see metrics.")
-
-
-# Define route for the metrics page
-@app.route("/metrics")
-def update_results():
-    result = speedtest.run_speedtest()
-    if result is not None:
-        metrics.update_metrics(result)
-    return make_wsgi_app()
-
-
-# Start the application if this script is run directly
-if __name__ == '__main__':
-    setup_app(app)
-    check_for_binary()
-    PORT = os.getenv('SPEEDTEST_PORT', 9798)
-    logging.info("Starting Cloudflare-Speedtest-Exporter on http://localhost:" +
-                 str(PORT))
-    serve(app, host='0.0.0.0', port=PORT)
+    try:
+        thread.join()
+    except KeyboardInterrupt:
+        logging.info("Exiting!")
+        server.shutdown()
+        thread.join()
