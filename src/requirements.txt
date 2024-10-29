@@ -1,3 +1,2 @@
 prometheus_client==0.20.0
-cloudflarepycli==2.0.1
-
+cloudflarepycli==2.0.2
