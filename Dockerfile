@@ -1,5 +1,5 @@
 # Use an official Python runtime based on Alpine Linux as a parent image
-FROM python:3.12.4-alpine3.19
+FROM python:3.12.7-alpine3.20
 
 # Create a new user 'speedtest' to run the application
 # This is a good practice to avoid running the application with root privileges
