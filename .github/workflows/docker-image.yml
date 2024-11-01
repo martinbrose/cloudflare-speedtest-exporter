@@ -64,4 +64,4 @@ jobs:
             ghcr.io/martinbrose/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.tag }}
           outputs: |
             type=image,push=true
-            annotation-index.org.opencontainers.image.description="Multi-arch Docker image for ${{ env.IMAGE_NAME }}"
+            annotation-index.org.opencontainers.image.description=Multi-arch Docker image for ${{ env.IMAGE_NAME }}
