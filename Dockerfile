@@ -1,5 +1,5 @@
 # Use an official Python runtime based on Alpine Linux as a parent image
-FROM python:3.12.7-alpine3.20
+FROM python:3.13.0-alpine3.20
 
 # Create a new user 'speedtest' to run the application
 # This is a good practice to avoid running the application with root privileges
@@ -15,7 +15,7 @@ COPY src/. .
 # --no-cache-dir: Don't store the cache of pip packages. Helps to reduce image size
 # find command: Delete all compiled Python files. This helps to reduce image size
 RUN pip install --no-cache-dir -r requirements.txt \
-    && find /usr/local/lib/python3.12 -name "*.pyc" -type f -delete
+    && find /usr/local/lib/python3.13 -name "*.pyc" -type f -delete
 
 # Change to the 'speedtest' user
 # This is a good practice to avoid running the application with root privileges
