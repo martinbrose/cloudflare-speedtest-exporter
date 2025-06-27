@@ -12,7 +12,7 @@ Thank you for considering contributing to Cloudflare Speedtest Exporter! We appr
 - [Get the test suite running](#get-the-test-suite-running)
 - [Implement your fix or feature](#implement-your-fix-or-feature)
 - [Make a Pull request](#make-a-pull-request)
-- [Keeping your Pull Request updates](#keeping-your-pull-request-up-to-date)
+- [Keeping your Pull Request up to date](#keeping-your-pull-request-up-to-date)
 - [License](#license)
 
 ## Introduction
